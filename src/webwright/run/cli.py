@@ -12,6 +12,7 @@ from webwright.config import get_config_from_spec, snapshot_config_specs
 from webwright.environments import get_environment
 from webwright.models import get_model
 from webwright.utils.serialize import UNSET, recursive_merge
+from webwright.run.doctor import run_doctor
 
 
 DEFAULT_CONFIGS = ["base.yaml", "model_openai.yaml"]
@@ -125,7 +126,9 @@ def run_one(
     result["_output_dir"] = str(resolved_output_dir)
     if close_exception is not None:
         result["_close_exception"] = str(close_exception)
-    console.print(result.get("final_response") or result.get("submission") or "Task finished.")
+    console.print(
+        result.get("final_response") or result.get("submission") or "Task finished."
+    )
     if run_exception is not None:
         raise run_exception
     return result
@@ -133,12 +136,22 @@ def run_one(
 
 @app.command()
 def main(
-    task: str = typer.Option(..., "-t", "--task", help="Natural language task description."),
-    task_id: str | None = typer.Option(None, "--task-id", help="Optional identifier used in the output directory name."),
-    start_url: str | None = typer.Option(None, "--start-url", help="Optional starting URL for the task."),
+    task: str = typer.Option(
+        ..., "-t", "--task", help="Natural language task description."
+    ),
+    task_id: str | None = typer.Option(
+        None, "--task-id", help="Optional identifier used in the output directory name."
+    ),
+    start_url: str | None = typer.Option(
+        None, "--start-url", help="Optional starting URL for the task."
+    ),
     config_spec: list[str] = typer.Option(DEFAULT_CONFIGS, "-c", "--config"),
     output_dir: Path | None = typer.Option(None, "-o", "--output-dir"),
-    debug: bool = typer.Option(False, "--debug", help="Launch headed local Playwright with devtools and keep it open for inspection."),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Launch headed local Playwright with devtools and keep it open for inspection.",
+    ),
 ) -> Any:
     return run_one(
         task=task,
@@ -148,6 +161,14 @@ def main(
         output_dir=output_dir,
         debug=debug,
     )
+
+
+@app.command()
+def doctor():
+    """
+    Validate local Webwright setup.
+    """
+    run_doctor()
 
 
 if __name__ == "__main__":
