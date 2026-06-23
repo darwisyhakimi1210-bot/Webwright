@@ -1,0 +1,110 @@
+# Tender orchestrator site list.
+#
+# Each entry describes one site the orchestrator should scrape.
+# Edit this file to add/remove sites without touching the code.
+#
+# Three execution modes (set `mode:` per site):
+#   http      : free, ~2s. Pure httpx + selectolax. Static HTML listings only.
+#   cached    : ~$0.001. Replays a previously-generated final_script.py. No LLM.
+#   webwright : full agent run. ~$0.10. Use only for sites that need a browser
+#               (login, JS rendering, anti-bot). Default if mode is omitted.
+#
+# Required keys (mode = http):
+#   id, url, mode=http, http_row_selector, http_selectors
+#
+# Required keys (mode = cached):
+#   id, url, mode=cached, cached_script (path relative to project root)
+#
+# Required keys (mode = webwright):
+#   id, url, config_specs, json_keys, task
+#
+# Optional everywhere: enabled (default true).
+
+sites:
+  # ---- Tier 2 (cached) -- known-good Playwright scripts; no LLM cost ----
+  - id: bnm_procurement
+    url: https://www.bnm.gov.my/procurement-notices
+    mode: cached
+    json_keys: [title, issue_date, closing_date, category]
+    cached_script: cached_scripts/bnm_procurement.py
+
+  - id: hasil_senarai_tender
+    url: https://www.hasil.gov.my/pautan-pantas/perolehan/senarai-tender-sebutharga
+    mode: cached
+    json_keys: [title, issue_date, closing_date, status]
+    cached_script: cached_scripts/hasil_senarai_tender.py
+
+  - id: dbkl_eperolehan
+    url: https://eperolehan.dbkl.gov.my/public-user/home
+    mode: cached
+    json_keys: [title, reference_no, issue_date, closing_date]
+    cached_script: cached_scripts/dbkl_eperolehan.py
+
+  # ---- Tier 1 (http) -- free, static HTML scraping ----
+  - id: mpaj_tender
+    url: https://www.mpaj.gov.my/ms/perniagaan/tender-sebutharga
+    mode: http
+    json_keys: [reference_no, title, closing_date]
+    http_row_selector: "table:nth-of-type(1) tbody tr"
+    http_selectors:
+      reference_no: "td:nth-child(1)"
+      title: "td:nth-child(2)"
+      closing_date: "td:nth-child(3)"
+
+  - id: mbsj_tender
+    url: https://www.mbsj.gov.my/ms/kenyataan-penjualan-tendersebut-harga-majlis-bandaraya-subang-jaya-2026
+    mode: http
+    json_keys: [bil, title, closing_date]
+    http_row_selector: "table:nth-of-type(1) tbody tr"
+    http_skip_header_rows: 1   # first row is the header (no <thead>)
+    http_selectors:
+      bil: "td:nth-child(1)"
+      title: "td:nth-child(2)"
+      closing_date: "td:nth-child(3)"
+
+  - id: kkr_senarai_tender
+    url: https://www.kkr.gov.my/ms/senarai-tender-sebutharga
+    mode: http
+    json_keys: [issue_date, title, category, closing_date, status]
+    http_table_contains: "Tarikh Iklan"
+    http_row_selector: "tr"
+    http_skip_header_rows: 1
+    http_selectors:
+      issue_date: "td:nth-child(1)"
+      title: "td:nth-child(2)"
+      category: "td:nth-child(3)"
+      closing_date: "td:nth-child(4)"
+      status: "td:nth-child(5)"
+    http_page_param: "page"
+    http_max_pages: 5
+    http_page_start: 0
+
+  - id: mbi_perolehan
+    url: https://www.mbi.gov.my/pusat-media/perolehan
+    mode: http
+    json_keys: [reference_no, title, closing_date]
+    http_row_selector: "table:nth-of-type(1) tbody tr"
+    http_max_rows: 13   # page appends a nav-footer row after the real tenders
+    http_selectors:
+      reference_no: "td:nth-child(1)"
+      title: "td:nth-child(2)"
+      closing_date: "td:nth-child(3)"
+
+  # ---- Tier 2 (cached) -- Cloudflare/WAF sites bypassed with stealth browser ----
+  - id: bursa_tenders
+    url: https://www.bursamalaysia.com/about_bursa/about_us/tenders
+    mode: cached
+    json_keys: [title, issue_date, closing_date]
+    cached_script: cached_scripts/bursa_tenders.py
+
+  - id: kwsp_perolehan
+    url: https://www.kwsp.gov.my/ms/korporat/perolehan/tender
+    mode: cached
+    json_keys: [title, reference_no, issue_date, closing_date]
+    cached_script: cached_scripts/kwsp_perolehan.py
+
+  - id: mof_tender
+    url: https://www.mof.gov.my/portal/ms/berita/tender
+    mode: cached
+    json_keys: [title, date, url]
+    cached_script: cached_scripts/mof_tender.py
