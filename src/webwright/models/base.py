@@ -5,6 +5,7 @@ import base64
 import json
 import mimetypes
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Annotated, Any
@@ -120,9 +121,33 @@ def parse_json_output(raw: str, *, action_field: str = "bash_command") -> dict[s
     return parsed
 
 
+def _find_bash() -> str | None:
+    """Return a usable bash executable path, skipping WSL bash on Windows."""
+    if os.path.exists("/bin/bash"):
+        return "/bin/bash"
+    # On Windows, prefer Git Bash over WSL bash (WSL bash needs a distro installed).
+    git_bash_candidates = [
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files\Git\usr\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\usr\bin\bash.exe",
+    ]
+    for path in git_bash_candidates:
+        if os.path.exists(path):
+            return path
+    # Fall back to PATH lookup but reject WSL bash (lives in System32).
+    found = shutil.which("bash")
+    if found and "system32" not in found.lower():
+        return found
+    return None
+
+
 def _validate_bash_command(command: str) -> None:
+    bash = _find_bash()
+    if bash is None:
+        return
     result = subprocess.run(
-        ["/bin/bash", "-n"],
+        [bash, "-n"],
         input=command,
         text=True,
         capture_output=True,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,25 @@ from pydantic import BaseModel, Field
 
 _EXPORT_RE = re.compile(r"^export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def _find_git_bash() -> str | None:
+    """Return a usable bash executable, preferring Git Bash over WSL on Windows."""
+    if os.path.exists("/bin/bash"):
+        return "/bin/bash"
+    git_bash_candidates = [
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files\Git\usr\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\usr\bin\bash.exe",
+    ]
+    for path in git_bash_candidates:
+        if os.path.exists(path):
+            return path
+    found = shutil.which("bash")
+    if found and "system32" not in found.lower():
+        return found
+    return None
 
 
 class LocalWorkspaceEnvironmentConfig(BaseModel):
@@ -33,7 +53,11 @@ class LocalWorkspaceEnvironmentConfig(BaseModel):
     start_url: str | None = None
     output_dir: Path = Path("outputs/sandbox/default")
     command_timeout_seconds: int = 180
-    shell: str = "/bin/bash"
+    # ``shell`` is resolved at __init__ time. ``None``/empty values request
+    # auto-detection; an explicit path that does not exist on the host
+    # platform is also re-resolved. Hardcoding ``/bin/bash`` here breaks
+    # Windows (the path does not exist there).
+    shell: str | None = None
     env: dict[str, str] = Field(default_factory=dict)
     credentials_file: Path | None = None
     browser_mode: str = "browserbase"  # "browserbase" or "local"
@@ -51,6 +75,17 @@ class LocalWorkspaceEnvironment:
         self._step_index = 0
         self._prepared_task: dict[str, Any] = {}
         self._credential_env = self._load_credential_env(self.config.credentials_file)
+        # Always resolve the shell executable. On Linux/Mac /bin/bash exists;
+        # on Windows prefer Git Bash over WSL bash (WSL bash needs a distro
+        # and fails when none is installed). YAML configs historically
+        # hardcoded "/bin/bash" which does not exist on Windows, so we always
+        # re-run the resolver and treat a missing or non-existent path as a
+        # request to auto-detect. Fall back to "" (cmd.exe) only if no Git
+        # Bash is found.
+        shell_value = self.config.shell or ""
+        if not shell_value or not os.path.exists(shell_value):
+            shell_value = _find_git_bash() or ""
+        self.config.shell = shell_value
 
     def _load_credential_env(self, path: Path | None) -> dict[str, str]:
         if path is None:
@@ -188,20 +223,40 @@ class LocalWorkspaceEnvironment:
             "TMPDIR": str(self._workspace_dir() / ".tmp"),
         }
 
+        # When a real shell binary is configured, invoke it directly instead
+        # of relying on ``subprocess.run(..., shell=True, executable=...)``.
+        # On Windows the latter splits the executable path at spaces (e.g.
+        # "C:\Program Files\Git\bin\bash.exe" gets treated as the command
+        # "Files\Git\bin\bash.exe") and produces spurious FileNotFoundError /
+        # "command not found" failures. Running bash as the program with
+        # shell=False preserves shell features like pipes and redirects.
+        shell_path = self.config.shell or None
         try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                executable=self.config.shell,
-                text=True,
-                cwd=resolved_cwd,
-                env=command_env,
-                timeout=self.config.command_timeout_seconds,
-                encoding="utf-8",
-                errors="replace",
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            )
+            if shell_path:
+                result = subprocess.run(
+                    [shell_path, "-c", command],
+                    text=True,
+                    cwd=resolved_cwd,
+                    env=command_env,
+                    timeout=self.config.command_timeout_seconds,
+                    encoding="utf-8",
+                    errors="replace",
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                )
+            else:
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    text=True,
+                    cwd=resolved_cwd,
+                    env=command_env,
+                    timeout=self.config.command_timeout_seconds,
+                    encoding="utf-8",
+                    errors="replace",
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                )
             output = result.stdout
             returncode = result.returncode
             exception_info = ""
