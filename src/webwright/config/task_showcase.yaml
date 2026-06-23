@@ -51,7 +51,10 @@ environment:
   start_url:
   output_dir: outputs/default
   command_timeout_seconds: 240
-  shell: /bin/bash
+  # Leave empty so LocalWorkspaceEnvironment auto-detects bash on each
+  # platform (/bin/bash on Linux/macOS, Git Bash on Windows). Hardcoding
+  # /bin/bash here breaks Windows because that path does not exist there.
+  shell:
   # Path to a shell file that exports credentials (BROWSERBASE_API_KEY,
   # BROWSERBASE_PROJECT_ID, ANTHROPIC_API_KEY, OPENAI_API_KEY, ...). Leave
   # empty to read these from the parent process environment instead.

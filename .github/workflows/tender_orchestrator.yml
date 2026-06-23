@@ -1,0 +1,36 @@
+name: Tender Orchestrator
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # every hour (UTC) = every hour Malaysia time too
+  workflow_dispatch:        # allows you to trigger manually from GitHub website
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: |
+          pip install -e .
+          pip install selectolax
+
+      - name: Install Playwright browser
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run tender orchestrator
+        env:
+          EMAIL_FROM:     ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO:       ${{ secrets.EMAIL_TO }}
+          EMAIL_APP_PASS: ${{ secrets.EMAIL_APP_PASS }}
+        run: python tender_orchestrator.py
