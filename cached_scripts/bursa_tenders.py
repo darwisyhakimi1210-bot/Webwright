@@ -30,21 +30,35 @@ async def _extract() -> list[dict]:
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
             headless=True,
-            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--window-size=1366,768",
+            ],
         )
         ctx = await browser.new_context(
             user_agent=UA,
             viewport={"width": 1366, "height": 768},
             locale="en-US",
             timezone_id="Asia/Kuala_Lumpur",
-            extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+            extra_http_headers={
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Cache-Control": "no-cache",
+            },
         )
-        await ctx.add_init_script(
-            "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
-        )
+        await ctx.add_init_script("""
+            Object.defineProperty(navigator,'webdriver',{get:()=>undefined});
+            Object.defineProperty(navigator,'plugins',{get:()=>[1,2,3,4,5]});
+            Object.defineProperty(navigator,'languages',{get:()=>['en-US','en']});
+            window.chrome={runtime:{}};
+        """)
         page = await ctx.new_page()
-        await page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-        await page.wait_for_timeout(5000)
+        await page.goto(URL, wait_until="networkidle", timeout=90000)
+        await page.wait_for_timeout(8000)
 
         # Table index 1: Posting Date | Closing Date | Tender Overview | Notice
         rows = await page.evaluate("""() => {
